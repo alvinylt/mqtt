@@ -1,13 +1,18 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O3
 LIBS = -lpaho-mqtt3c
-TARGET = publisher
-SRCS = publisher.c
+PUBLISHER_TARGET = publisher
+PUBLISHER_SRCS = publisher.c
+ANALYSER_TARGET = analyser
+ANALYSER_SRCS = analyser.c
 
-all: $(TARGET)
+all: $(PUBLISHER_TARGET) $(ANALYSER_TARGET)
 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) $(LIBS) -o $(TARGET) $(SRCS)
+$(PUBLISHER_TARGET): $(PUBLISHER_SRCS)
+	$(CC) $(CFLAGS) $(LIBS) -o $(PUBLISHER_TARGET) $(PUBLISHER_SRCS)
+
+$(ANALYSER_TARGET): $(ANALYSER_SRCS)
+	$(CC) $(CFLAGS) $(LIBS) -o $(ANALYSER_TARGET) $(ANALYSER_SRCS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(PUBLISHER_TARGET) $(ANALYSER_TARGET)

@@ -10,7 +10,10 @@
 #define TIMEOUT 1048576
 
 // Publish messages for 60 seconds
-#define TIME_LIMIT 2
+#define TIME_LIMIT 60
+
+// String buffer sizes
+#define BUFFER_SIZE 128
 
 // Helper functions for receiving and publishing messages
 static MQTTClient *mqtt_connect(char *url, const short int instance);
@@ -30,7 +33,7 @@ short int *instance_count = NULL;
 /**
  * The main function to execute the publisher program.
  * To execute the program, the command should include the MQTT broker's hostname
- * and its port, as well as the instance number of this publisher.
+ * and its port, as well as the instance number (1-5) of this publisher.
  */
 int main(int argc, char *argv[]) {
     // Parse the command input
@@ -55,6 +58,7 @@ int main(int argc, char *argv[]) {
     free(url);
 
     while (true) {
+        // Refresh the QoS, delay and instance count records
         qos = delay = instance_count = NULL;
 
         // Listen for incoming messages (QoS, delay and instance count)
@@ -67,7 +71,7 @@ int main(int argc, char *argv[]) {
     // Disconnect from the broker if the while loop iteration stops
     mqtt_disconnect(client);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 /**
@@ -99,6 +103,15 @@ static MQTTClient *mqtt_connect(char *url, const short int instance) {
         exit(EXIT_FAILURE);
     }
 
+    // Subscribe to the three specified topics
+    int subs_qos[] = {0, 0, 0};
+    status = MQTTClient_subscribeMany(*client, 3, subs_topics, subs_qos);
+    if (status != MQTTCLIENT_SUCCESS) {
+        fprintf(stderr, "Error: cannot subscribe to the three topics\n");
+        mqtt_disconnect(client);
+        exit(EXIT_FAILURE);
+    }
+
     return client;
 }
 
@@ -114,15 +127,6 @@ static MQTTClient *mqtt_connect(char *url, const short int instance) {
  * @param client pointer to the MQTTClient handle object
  */
 static void listen_request(MQTTClient *client) {
-    // Subscribe to the three specified topics
-    int subs_qos[] = {0, 0, 0};
-    int status = MQTTClient_subscribeMany(*client, 3, subs_topics, subs_qos);
-    if (status != MQTTCLIENT_SUCCESS) {
-        fprintf(stderr, "Error: cannot subscribe to the three topics\n");
-        mqtt_disconnect(client);
-        exit(EXIT_FAILURE);
-    }
-
     // Variables for managing incoming messages
     MQTTClient_message *message = NULL;
     char *topic = NULL;
@@ -185,12 +189,14 @@ static void publish_counter(MQTTClient *client, const short int instance) {
     if (!values_valid) return;
 
     // Do not proceed if the instance count is smaller than this publisher's ID
-    if (*instance_count < instance) return;
+    if (*instance_count < instance) {
+        return;
+    }
 
     // Topic to which message shall be published
-    char topic[64];
-    snprintf(topic, 64, "counter/%d/%d/%d", *instance_count, *qos, *delay);
-    topic[63] = '\0';
+    char topic[BUFFER_SIZE];
+    snprintf(topic, BUFFER_SIZE, "counter/%d/%d/%d", instance, *qos, *delay);
+    topic[BUFFER_SIZE - 1] = '\0';
 
     // Counter value to be published to the broker
     long int counter = 0;
@@ -204,13 +210,13 @@ static void publish_counter(MQTTClient *client, const short int instance) {
     MQTTClient_message message = MQTTClient_message_initializer;
     message.qos = *qos;
     message.retained = false;
-    char payload[128];
+    char payload[BUFFER_SIZE];
     
     // Publish messages until the 60-second time limit elapses
     while (true) {
         // Define the payload of the message
-        snprintf(payload, 128, "%ld", counter);
-        payload[127] = '\0';
+        snprintf(payload, BUFFER_SIZE, "%ld", counter);
+        payload[BUFFER_SIZE - 1] = '\0';
         message.payload = payload;
         message.payloadlen = strlen(payload);
 
