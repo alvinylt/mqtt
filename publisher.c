@@ -2,15 +2,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <time.h>
 #include "MQTTClient.h"
 
 // Timeout for receiving incoming messages: around 17 minutes
 #define TIMEOUT 1048576
 
+// Publish messages for 60 seconds
+#define TIME_LIMIT 60
+
 // Helper functions for receiving and publishing messages
-static MQTTClient *mqtt_connect(char *url, int instance);
+static MQTTClient *mqtt_connect(char *url, const short int instance);
 static void listen_request(MQTTClient *client);
-static void publish_counter(MQTTClient *client);
+static void publish_counter(MQTTClient *client, const short int instance);
 static void mqtt_disconnect(MQTTClient *client);
 
 // Global variables: topics for subscription
@@ -39,7 +44,7 @@ int main(int argc, char *argv[]) {
     sprintf(url, "mqtt://%s:%s", argv[1], argv[2]);
 
     // Check that the instance number is within the range from 1 to 5
-    int instance = atoi(argv[3]);
+    const short int instance = atoi(argv[3]);
     if (instance < 1 || instance > 5) {
         fprintf(stderr, "Error: instance number must be in between 1 and 5\n");
         exit(EXIT_FAILURE);
@@ -53,7 +58,7 @@ int main(int argc, char *argv[]) {
     listen_request(client);
 
     // Publish messages to the broker
-    publish_counter(client);
+    publish_counter(client, instance);
 
     // Disconnect from the broker
     mqtt_disconnect(client);
@@ -68,7 +73,7 @@ int main(int argc, char *argv[]) {
  * @param instance Instance number of this publisher
  * @return the MQTTClient handle object
  */
-static MQTTClient *mqtt_connect(char *url, int instance) {
+static MQTTClient *mqtt_connect(char *url, const short int instance) {
     // Create the MQTTClient handle
     MQTTClient *client = (MQTTClient *)malloc(sizeof(MQTTClient));
 
@@ -156,7 +161,7 @@ static void listen_request(MQTTClient *client) {
  * 
  * @param client pointer to the MQTTClient handle object
  */
-static void publish_counter(MQTTClient *client) {
+static void publish_counter(MQTTClient *client, const short int instance) {
     // Check the validity of the values
     bool values_valid = true;
     if (*qos < 0 || *qos > 2) {
@@ -173,15 +178,51 @@ static void publish_counter(MQTTClient *client) {
     }
 
     // Do not proceed if any values are invalid
-    if (!values_valid) {
-        mqtt_disconnect(client);
-        exit(EXIT_FAILURE);
-    }
+    if (!values_valid) return;
 
-    (void)client;
-    fprintf(stdout, "QoS: %d\n", *qos);
-    fprintf(stdout, "Delay: %d\n", *delay);
-    fprintf(stdout, "Instance count: %d\n", *instance_count);
+    // Do not proceed if the instance count is smaller than this publisher's ID
+    if (*instance_count < instance) return;
+
+    // Topic to which message shall be published
+    char topic[64];
+    snprintf(topic, 64, "counter/%d/%d/%d", *instance_count, *qos, *delay);
+
+    // Counter value to be published to the broker
+    long int counter = 0;
+
+    // Message to be published
+    MQTTClient_message message = MQTTClient_message_initializer;
+    message.qos = *qos;
+    message.retained = false;
+    char payload[128];
+
+    // For evaluating the 60-second time limit
+    time_t start_time, current_time;
+    double elapsed_time;
+    time(&start_time);
+
+    // Publish messages until the 60-second time limit elapses
+    while (true) {
+        // Define the payload of the message
+        snprintf(payload, strlen(payload), "%ld", counter);
+        message.payload = payload;
+        message.payloadlen = strlen(payload);
+
+        // Publish the message
+        MQTTClient_publishMessage(*client, topic, &message, NULL);
+
+        // Increment the counter
+        counter++;
+
+        // Stop publishing if the 60-second time limit is over
+        time(&current_time);
+        elapsed_time = difftime(current_time, start_time);
+        if (elapsed_time >= TIME_LIMIT)
+            break;
+
+        // Delay the next message publishing for the specified time frame
+        sleep(*delay/1000);
+    }
 }
 
 /**
