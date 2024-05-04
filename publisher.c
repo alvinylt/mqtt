@@ -10,7 +10,7 @@
 #define TIMEOUT 1048576
 
 // Publish messages for 60 seconds
-#define TIME_LIMIT 60
+#define TIME_LIMIT 2
 
 // Helper functions for receiving and publishing messages
 static MQTTClient *mqtt_connect(char *url, const short int instance);
@@ -54,13 +54,17 @@ int main(int argc, char *argv[]) {
     MQTTClient *client = mqtt_connect(url, instance);
     free(url);
 
-    // Listen for incoming messages (QoS, delay and instance count)
-    listen_request(client);
+    while (true) {
+        qos = delay = instance_count = NULL;
 
-    // Publish messages to the broker
-    publish_counter(client, instance);
+        // Listen for incoming messages (QoS, delay and instance count)
+        listen_request(client);
 
-    // Disconnect from the broker
+        // Publish messages to the broker
+        publish_counter(client, instance);
+    }
+
+    // Disconnect from the broker if the while loop iteration stops
     mqtt_disconnect(client);
 
     return 0;
@@ -186,25 +190,27 @@ static void publish_counter(MQTTClient *client, const short int instance) {
     // Topic to which message shall be published
     char topic[64];
     snprintf(topic, 64, "counter/%d/%d/%d", *instance_count, *qos, *delay);
+    topic[63] = '\0';
 
     // Counter value to be published to the broker
     long int counter = 0;
-
-    // Message to be published
-    MQTTClient_message message = MQTTClient_message_initializer;
-    message.qos = *qos;
-    message.retained = false;
-    char payload[128];
 
     // For evaluating the 60-second time limit
     time_t start_time, current_time;
     double elapsed_time;
     time(&start_time);
 
+    // Message to be published
+    MQTTClient_message message = MQTTClient_message_initializer;
+    message.qos = *qos;
+    message.retained = false;
+    char payload[128];
+    
     // Publish messages until the 60-second time limit elapses
     while (true) {
         // Define the payload of the message
-        snprintf(payload, strlen(payload), "%ld", counter);
+        snprintf(payload, 128, "%ld", counter);
+        payload[127] = '\0';
         message.payload = payload;
         message.payloadlen = strlen(payload);
 
