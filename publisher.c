@@ -4,9 +4,20 @@
 #include <stdbool.h>
 #include "MQTTClient.h"
 
+// 3 minutes timeout
+#define TIMEOUT 600000
+
 // Helper functions
 int publish(char *url, char *client_id);
 int message_arrive(void *context, char *topicName, int topicLen, MQTTClient_message *message);
+void execute_publish();
+
+// Global variables
+char *topics[] = {"request/qos", "request/delay", "request/instancecount"};
+int values[] = {-1, -1, -1};
+const int *qos = &values[0];
+const int *delay = &values[1];
+const int *instance_count = &values[2];
 
 /**
  * The main function to execute the publisher program.
@@ -40,8 +51,8 @@ int publish(char *url, char *id) {
     // Initialise the MQTT client configurations
     MQTTClient client;
     MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    MQTTClient_message pubmsg = MQTTClient_message_initializer;
-    MQTTClient_deliveryToken token;
+    // MQTTClient_message pubmsg = MQTTClient_message_initializer;
+    // MQTTClient_deliveryToken token;
     int rc;
     char *client_id = malloc(strlen(id) + 5);
     sprintf(client_id, "pub-%s", id);
@@ -51,8 +62,6 @@ int publish(char *url, char *id) {
     conn_opts.keepAliveInterval = 1024;
     conn_opts.cleansession = true;
 
-    int status = MQTTClient_setCallbacks(client, NULL, NULL, message_arrive, NULL);
-
     // Establish a connection with the MQTT broker
     if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
         printf("Failed to connect, return code %d\n", rc);
@@ -61,18 +70,38 @@ int publish(char *url, char *id) {
 
     // Subscribe to the three specified topics
     char *topics[] = {"request/qos", "request/delay", "request/instancecount"};
-    int qos[] = {0, 0, 0};
-    
-    status = MQTTClient_subscribeMany(client, 3, topics, qos);
+    int qos_send[] = {0, 0, 0};
+    int status = MQTTClient_subscribeMany(client, 3, topics, qos_send);
     if (status != MQTTCLIENT_SUCCESS) {
-        fprintf(stdout, "Problem\n");
-    }
-    else {
-        fprintf(stdout, "No problem\n");
+        fprintf(stdout, "Error subscribing to the three topics\n");
     }
 
+    MQTTClient_message *message = NULL;
+    char *topic = NULL;
+    int topic_length = -1;
 
-    getchar();
+    // Read incoming messages at subscribed topics
+    while (*qos == -1 || *delay == -1 || *instance_count == -1) {
+        // Wait for an income message
+        MQTTClient_receive(client, &topic, &topic_length, &message, TIMEOUT);
+
+        // The message pointer is NULL when timeout expires
+        if (message == NULL) {
+            fprintf(stderr, "Timeout\n");
+        }
+
+        // Determine the topic
+        for (int i = 0; i <= 2; i++) {
+            if (strcmp(topic, topics[i]) == 0) {
+                values[i] = atoi((char *)message->payload);
+            }
+        }
+
+        MQTTClient_freeMessage(&message);
+        MQTTClient_free(topic);
+    }
+
+    execute_publish();
 
     MQTTClient_disconnect(client, 10000);
     MQTTClient_destroy(&client);
@@ -80,9 +109,9 @@ int publish(char *url, char *id) {
     return rc;
 }
 
-int message_arrive(void *context, char *topicName, int topicLen, MQTTClient_message *message) {
-    fprintf(stdout, "Message on topic %s: %.*s\n", topicName, message->payloadlen, (char*)message->payload);
-    MQTTClient_freeMessage(&message);
-    MQTTClient_free(topicName);
-    return true;
+void execute_publish() {
+    fprintf(stdout, "Execute!\n");
+    fprintf(stdout, "QoS: %d\n", *qos);
+    fprintf(stdout, "Delay: %d\n", *delay);
+    fprintf(stdout, "Instance count: %d\n", *instance_count);
 }
