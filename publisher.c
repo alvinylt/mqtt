@@ -4,12 +4,9 @@
 #include <stdbool.h>
 #include "MQTTClient.h"
 
-// Global constants
-#define TOPIC "topic"
-#define QOS 0
-
 // Helper functions
 int publish(char *url, char *client_id);
+int message_arrive(void *context, char *topicName, int topicLen, MQTTClient_message *message);
 
 /**
  * The main function to execute the publisher program.
@@ -46,11 +43,15 @@ int publish(char *url, char *id) {
     MQTTClient_message pubmsg = MQTTClient_message_initializer;
     MQTTClient_deliveryToken token;
     int rc;
+    char *client_id = malloc(strlen(id) + 5);
+    sprintf(client_id, "pub-%s", id);
 
     // Create the MQTT client
-    MQTTClient_create(&client, url, id, MQTTCLIENT_PERSISTENCE_NONE, NULL);
-    conn_opts.keepAliveInterval = 20;
-    conn_opts.cleansession = 1;
+    MQTTClient_create(&client, url, client_id, MQTTCLIENT_PERSISTENCE_NONE, NULL);
+    conn_opts.keepAliveInterval = 1024;
+    conn_opts.cleansession = true;
+
+    int status = MQTTClient_setCallbacks(client, NULL, NULL, message_arrive, NULL);
 
     // Establish a connection with the MQTT broker
     if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
@@ -58,18 +59,30 @@ int publish(char *url, char *id) {
         exit(EXIT_FAILURE);
     }
 
-    // Define the message to be published
-    pubmsg.payload = "Hello, MQTT!";  // Actual message
-    pubmsg.payloadlen = strlen(pubmsg.payload);  // Length of the message
-    pubmsg.qos = QOS;  // Quality of service level
-    pubmsg.retained = false;  // Whether the broker shall retain the message
+    // Subscribe to the three specified topics
+    char *topics[] = {"request/qos", "request/delay", "request/instancecount"};
+    int qos[] = {0, 0, 0};
+    
+    status = MQTTClient_subscribeMany(client, 3, topics, qos);
+    if (status != MQTTCLIENT_SUCCESS) {
+        fprintf(stdout, "Problem\n");
+    }
+    else {
+        fprintf(stdout, "No problem\n");
+    }
 
-    MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token);
-    rc = MQTTClient_waitForCompletion(client, token, 10000);
-    printf("Message with delivery token %d delivered\n", token);
+
+    getchar();
 
     MQTTClient_disconnect(client, 10000);
     MQTTClient_destroy(&client);
 
     return rc;
+}
+
+int message_arrive(void *context, char *topicName, int topicLen, MQTTClient_message *message) {
+    fprintf(stdout, "Message on topic %s: %.*s\n", topicName, message->payloadlen, (char*)message->payload);
+    MQTTClient_freeMessage(&message);
+    MQTTClient_free(topicName);
+    return true;
 }
