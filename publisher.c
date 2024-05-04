@@ -17,10 +17,10 @@ static void mqtt_disconnect(MQTTClient *client);
 char *subs_topics[] = {"request/qos", "request/delay", "request/instancecount"};
 
 // Global variables: values from the subscribed topics
-int values[] = {-1, -1, -1};
-const int *qos = &values[0];
-const int *delay = &values[1];
-const int *instance_count = &values[2];
+short int values[] = {-1, -1, -1};
+short int *qos = NULL;
+short int *delay = NULL;
+short int *instance_count = NULL;
 
 /**
  * The main function to execute the publisher program.
@@ -85,7 +85,7 @@ static MQTTClient *mqtt_connect(char *url, int instance) {
     // Establish a connection with the MQTT broker
     int status = MQTTClient_connect(*client, &conn_opts);
     if (status != MQTTCLIENT_SUCCESS) {
-        fprintf(stderr, "Failed to connect, return code %d\n", status);
+        fprintf(stderr, "Error: failed to connect, return code %d\n", status);
         mqtt_disconnect(client);
         exit(EXIT_FAILURE);
     }
@@ -109,8 +109,9 @@ static void listen_request(MQTTClient *client) {
     int subs_qos[] = {0, 0, 0};
     int status = MQTTClient_subscribeMany(*client, 3, subs_topics, subs_qos);
     if (status != MQTTCLIENT_SUCCESS) {
-        fprintf(stderr, "Error subscribing to the three topics\n");
-        return;
+        fprintf(stderr, "Error: cannot subscribe to the three topics\n");
+        mqtt_disconnect(client);
+        exit(EXIT_FAILURE);
     }
 
     // Variables for managing incoming messages
@@ -119,20 +120,29 @@ static void listen_request(MQTTClient *client) {
     int topic_length = -1;
 
     // Read incoming messages at subscribed topics
-    while (*qos == -1 || *delay == -1 || *instance_count == -1) {
+    while (qos == NULL || delay == NULL || instance_count == NULL) {
         // Wait for an income message
         MQTTClient_receive(*client, &topic, &topic_length, &message, TIMEOUT);
 
         // The message pointer is NULL when timeout expires
         if (message == NULL) {
-            fprintf(stderr, "Timeout\n");
+            fprintf(stderr, "Error: timeout expires\n");
+            mqtt_disconnect(client);
+            exit(EXIT_FAILURE);
         }
 
         // Determine the topic and write the value to the relevant variable
-        for (int i = 0; i <= 2; i++) {
-            if (strcmp(topic, subs_topics[i]) == 0) {
-                values[i] = atoi((char *)message->payload);
-            }
+        if (strcmp(topic, subs_topics[0]) == 0) {
+            values[0] = atoi((char *)message->payload);
+            qos = &values[0];
+        }
+        else if (strcmp(topic, subs_topics[1]) == 0) {
+            values[1] = atoi((char *)message->payload);
+            delay = &values[1];
+        }
+        else if (strcmp(topic, subs_topics[2]) == 0) {
+            values[2] = atoi((char *)message->payload);
+            instance_count = &values[2];
         }
 
         // Free the memory allocated for the incoming message
@@ -147,6 +157,27 @@ static void listen_request(MQTTClient *client) {
  * @param client pointer to the MQTTClient handle object
  */
 static void publish_counter(MQTTClient *client) {
+    // Check the validity of the values
+    bool values_valid = true;
+    if (*qos < 0 || *qos > 2) {
+        fprintf(stderr, "Error: invalid QoS level %d\n", *qos);
+        values_valid = false;
+    }
+    if (*delay != 0 && *delay != 1 && *delay != 2 && *delay != 4) {
+        fprintf(stderr, "Error: invalid delay length %d\n", *delay);
+        values_valid = false;
+    }
+    if (*instance_count < 1 || *instance_count > 5) {
+        fprintf(stderr, "Error: invalid instance count %d\n", *instance_count);
+        values_valid = false;
+    }
+
+    // Do not proceed if any values are invalid
+    if (!values_valid) {
+        mqtt_disconnect(client);
+        exit(EXIT_FAILURE);
+    }
+
     (void)client;
     fprintf(stdout, "QoS: %d\n", *qos);
     fprintf(stdout, "Delay: %d\n", *delay);
