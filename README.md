@@ -1,5 +1,7 @@
 # MQTT Publisher and Analyser
 
+**Alvin Tang (u7447218)**
+
 This is an implementation of an MQTT publisher and an analyser written in the C
 programming language.
 
