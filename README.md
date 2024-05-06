@@ -10,8 +10,8 @@ The [publisher](publisher.c) subscribes to the topics `request/qos`,
 all three topics, it publishes values to the topic
 `counter/<instance>/<qos>/<delay>` for 60 seconds.
 
-The analyser publishes requests to the three topics under `request` and observes
-the behaviour of the publishers.
+The [analyser](analyser.c) publishes requests to the three topics under
+`request` and observes the behaviour of the publishers.
 
 ## Initialisation
 
