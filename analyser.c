@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
+#include <unistd.h>
+#include <sys/time.h>
 #include "MQTTClient.h"
 
 // String buffer size
@@ -16,9 +18,17 @@ static MQTTClient *mqtt_connect(char *url);
 static void analyse(MQTTClient *client, short int broker_to_analyser_qos,
                     short int qos, short int delay, short int instance_count);
 static void mqtt_disconnect(MQTTClient *client);
-static void listen_counter(MQTTClient *client);
+static void listen_counter();
+static int msg_arrived(void *context, char *topicName, int topicLen, MQTTClient_message *message);
 static double find_median(double arr[], int n);
 static int compare(const void *a, const void *b);
+
+// Variables for listening incoming messages and statistical analysis    
+long int last_count = -1;         // The last counter number received
+long int number_of_messages = 0;  // The total number of messages
+int out_of_order_count = 0;       // The number of out-of-order messages
+double delays[1000000];           // Delay time length
+struct timeval timestamp;         // Time of last incoming message
 
 /**
  * The mian function executes the analyser.
@@ -82,6 +92,9 @@ static MQTTClient *mqtt_connect(char *url) {
     MQTTClient_create(client, url, client_id, MQTTCLIENT_PERSISTENCE_NONE, NULL);
     conn_opts.keepAliveInterval = 1024;
     conn_opts.cleansession = true;
+
+    // Define the handling of incoming messages
+    MQTTClient_setCallbacks(*client, NULL, NULL, msg_arrived, NULL);
 
     // Establish a connection with the MQTT broker
     int status = MQTTClient_connect(*client, &conn_opts);
@@ -152,6 +165,10 @@ static void analyse(MQTTClient *client, short int broker_to_analyser_qos,
     MQTTClient_publishMessage(*client, "request/delay", &delay_message, NULL);
     MQTTClient_publishMessage(*client, "request/instancecount", &instance_count_message, NULL);
 
+    // Reset global variables for statistical purposes
+    last_count = -1;
+    out_of_order_count = number_of_messages = 0;
+
     // Listen to the current topic for the counter's responses for analysis
     listen_counter(client);
 
@@ -160,60 +177,12 @@ static void analyse(MQTTClient *client, short int broker_to_analyser_qos,
 }
 
 /**
- * Listen to the counter publisher pub-1's response and evaluate the statistics.
- * 
- * @param client pointer to the MQTTClient handle object
+ * Listen to the counter publisher pub-1's response for one minute and evaluate
+ * the statistics.
  */
-static void listen_counter(MQTTClient *client) {
-    // Specify the time length of the entire analysis
-    time_t end_time = time(NULL) + TIME_LIMIT;
-
-    // The last counter number received on the topic
-    long int last_count = -1;
-    // The total number of messages
-    long int number_of_messages = 0;
-    // The number of out-of-order messages
-    int out_of_order_count = 0;
-
-    // Delay time length
-    double delays[1000000];
-
+static void listen_counter() {
     // Listen to the topic for the specified period of time (60 seconds)
-    while (time(NULL) < end_time) {
-        MQTTClient_message *message = NULL;
-        char *topic_name = NULL;
-        int topic_len = -1;
-
-        // Record the time required before receiving the next message
-        double start_time = clock();
-        if (MQTTClient_receive(*client, &topic_name, &topic_len, &message, 5)
-                != MQTTCLIENT_SUCCESS) {
-            continue;
-        }
-
-        // Analyse the incoming counter message
-        if (topic_name != NULL) {
-            int this_count = atoi((char *)message->payload);
-            // The incoming message is out of order
-            if (this_count < last_count + 1) {
-                out_of_order_count++;
-                number_of_messages++;
-            }
-            else if (this_count > last_count + 1) {
-                last_count = this_count;
-                number_of_messages++;
-            }
-            // The incoming message is in order
-            else {
-                double end_time = clock();
-                delays[number_of_messages++] = (end_time - start_time) / CLOCKS_PER_SEC * 1000;
-                last_count = this_count;
-            }
-
-            MQTTClient_freeMessage(&message);
-            MQTTClient_free(topic_name);
-        }
-    }
+    sleep(TIME_LIMIT);
 
     // The average rate of incoming messages
     double average_msg_rate = number_of_messages / TIME_LIMIT;
@@ -228,7 +197,7 @@ static void listen_counter(MQTTClient *client) {
             "Total number of messages: %ld\n"
             "Average incoming message rate: %d per second\n"
             "Percentage of out-of-order messages: %.2f%%\n"
-            "Average delay time length: %.4f ms\n\n",
+            "Median delay time length: %.2f ms\n\n",
         last_count, number_of_messages, (int)average_msg_rate,
         out_of_order_msg_rate / 100, avg_delay);
 }
@@ -244,11 +213,68 @@ static void mqtt_disconnect(MQTTClient *client) {
     free(client);
 }
 
+/**
+ * Define how an incoming message is handled. This function is set to be run
+ * asynchronously by MQTTClient_setCallbacks().
+ */
+static int msg_arrived(void *context, char *topic, int topic_len,
+                        MQTTClient_message *message) {
+    // Unused parameters
+    (void)context;
+    (void)topic_len;
+
+    // Get the current timestamp
+    struct timeval timestamp2;
+    gettimeofday(&timestamp2, NULL);
+
+    if (timestamp.tv_sec == 0 && timestamp.tv_usec == 0)
+        timestamp = timestamp2;
+    else {
+        // Evalaute the time length since the last incoming message
+        long long delay =
+            (timestamp2.tv_sec - timestamp.tv_sec) * 1000 +
+                    (timestamp2.tv_usec - timestamp.tv_usec) / 1000;
+        if (delay != 0) timestamp = timestamp2;
+        // Update the statistics recorded in the global variables
+        int this_count = atoi((char *)message->payload);
+            // The incoming message is out of order
+            if (this_count < last_count + 1) {
+                out_of_order_count++;
+                number_of_messages++;
+            }
+            else if (this_count > last_count + 1) {
+                last_count = this_count;
+                number_of_messages++;
+            }
+            // The incoming message is in order
+            else {
+                delays[number_of_messages++] = delay;
+                last_count = this_count;
+            }
+    }
+
+    // Release the memory occupied by the message object
+    MQTTClient_freeMessage(&message);
+    MQTTClient_free(topic);
+
+    return MQTTCLIENT_SUCCESS;
+}
+
+/**
+ * Find the median of a number in an array of doubles.
+ * 
+ * @param arr an array of doubles
+ * @param n the length of the array
+ * @return the median value of the doubles
+ */
 static double find_median(double arr[], int n) {
     qsort(arr, n, sizeof(double), compare);
     return n % 2 != 0 ? arr[n / 2] : (arr[n / 2 - 1] + arr[n / 2]) / 2.0;
 }
 
+/**
+ * Helper function for find_median() for comparing two doubles.
+ */
 static int compare(const void *a, const void *b) {
     double difference = (*(double*)a - *(double*)b);
     if (difference < 0) return -1;
