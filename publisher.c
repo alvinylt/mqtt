@@ -6,7 +6,7 @@
 #include <time.h>
 #include "MQTTClient.h"
 
-// Timeout for receiving incoming messages: around 17 minutes
+// Timeout for receiving incoming messages
 #define TIMEOUT 1048576
 
 // Publish messages for 60 seconds
