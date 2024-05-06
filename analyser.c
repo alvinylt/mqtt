@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
-#include <sys/time.h>
 #include "MQTTClient.h"
 
 // String buffer size
@@ -18,7 +17,8 @@ static void analyse(MQTTClient *client, short int broker_to_analyser_qos,
                     short int qos, short int delay, short int instance_count);
 static void mqtt_disconnect(MQTTClient *client);
 static void listen_counter(MQTTClient *client);
-static long long int current_timestamp();
+static double find_median(double arr[], int n);
+static int compare(const void *a, const void *b);
 
 /**
  * The mian function executes the analyser.
@@ -48,9 +48,9 @@ int main(int argc, char *argv[]) {
             for (int j = 0; j < 4; j++)
                 for (int k = 0; k < 5; k++) {
                     fprintf(stdout, "Analysis:\n"
-                        "    QoS from broker to analyser: %d\n"
-                        "    QoS from publisher to broker: %d\n"
-                        "    Delay time: %d\n"
+                        "    Broker-analyser QoS: level %d\n"
+                        "    Publisher-broker QoS: level %d\n"
+                        "    Delay time: %d ms\n"
                         "    Number of active publishers: %d\n",
                         qos_levels[h], qos_levels[i],
                         delay_length[j], instance_counts[k]);
@@ -174,8 +174,9 @@ static void listen_counter(MQTTClient *client) {
     long int number_of_messages = 0;
     // The number of out-of-order messages
     int out_of_order_count = 0;
-    // Aggregate delay time length
-    double delays = 0;
+
+    // Delay time length
+    double delays[1000000];
 
     // Listen to the topic for the specified period of time (60 seconds)
     while (time(NULL) < end_time) {
@@ -184,7 +185,7 @@ static void listen_counter(MQTTClient *client) {
         int topic_len = -1;
 
         // Record the time required before receiving the next message
-        long long int start_time = current_timestamp();
+        double start_time = clock();
         if (MQTTClient_receive(*client, &topic_name, &topic_len, &message, 5)
                 != MQTTCLIENT_SUCCESS) {
             continue;
@@ -198,12 +199,15 @@ static void listen_counter(MQTTClient *client) {
                 out_of_order_count++;
                 number_of_messages++;
             }
-            // The incoming message is in order
-            else {
-                long long end_time = current_timestamp();
-                delays += end_time - start_time;
+            else if (this_count > last_count + 1) {
                 last_count = this_count;
                 number_of_messages++;
+            }
+            // The incoming message is in order
+            else {
+                double end_time = clock();
+                delays[number_of_messages++] = (end_time - start_time) / CLOCKS_PER_SEC * 1000;
+                last_count = this_count;
             }
 
             MQTTClient_freeMessage(&message);
@@ -216,15 +220,16 @@ static void listen_counter(MQTTClient *client) {
     // The percentage of out-of-order messages (amongst all incoming messages)
     double out_of_order_msg_rate = out_of_order_count / number_of_messages;
     // The average delay time length
-    double avg_delay = delays * 1000 / number_of_messages;
+    double avg_delay = find_median(delays, number_of_messages);
 
     // Print the statistics to terminal output
     fprintf(stdout,
+            "Last counter value received: %ld\n"
             "Total number of messages: %ld\n"
-            "Average incoming message rate: %f per second\n"
+            "Average incoming message rate: %d per second\n"
             "Percentage of out-of-order messages: %.2f%%\n"
-            "Average delay time length: %f\n",
-        number_of_messages, average_msg_rate,
+            "Average delay time length: %.4f ms\n\n",
+        last_count, number_of_messages, (int)average_msg_rate,
         out_of_order_msg_rate / 100, avg_delay);
 }
 
@@ -239,13 +244,14 @@ static void mqtt_disconnect(MQTTClient *client) {
     free(client);
 }
 
-/**
- * Helper function for listen_counter() to evaluate the message delivery delay.
- * 
- * @return the current time represented in milliseconds
- */
-static long long int current_timestamp() {
-    struct timeval te;
-    gettimeofday(&te, NULL);
-    return te.tv_sec * 1000LL + te.tv_usec / 1000;
+static double find_median(double arr[], int n) {
+    qsort(arr, n, sizeof(double), compare);
+    return n % 2 != 0 ? arr[n / 2] : (arr[n / 2 - 1] + arr[n / 2]) / 2.0;
+}
+
+static int compare(const void *a, const void *b) {
+    double difference = (*(double*)a - *(double*)b);
+    if (difference < 0) return -1;
+    else if (difference > 0) return 1;
+    else return 0;
 }
