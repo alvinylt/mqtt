@@ -3,11 +3,12 @@
 **Alvin Tang (u7447218)**
 
 This is an MQTT client implementation written in the C programming language.
-There are two programs, a publisher and an analyser. The
-[publisher](publisher.c) subscribes to the topics `request/qos`, `request/delay`
-and `request/instancecount`. When valid values are received in all three topics,
-it publishes values to the topic `counter/<instance>/<qos>/<delay>` for 60
-seconds as a counter.
+There are two programs, a publisher and an analyser.
+
+The [publisher](publisher.c) subscribes to the topics `request/qos`,
+`request/delay` and `request/instancecount`. When valid values are received in
+all three topics, it publishes values to the topic
+`counter/<instance>/<qos>/<delay>` for 60 seconds.
 
 The analyser publishes requests to the three topics under `request` and observes
 the behaviour of the publishers.
@@ -31,10 +32,11 @@ instructions on the
 ## Usage
 
 The publisher can be executed using the command
-`./publisher <Broker hostname> <port> <instance number>`.
+`./publisher <Broker hostname> <Port> <Instance>`.
 For instance, if the broker is hosted locally on port 1883, the command
-`./publisher localhost 1883 3` creates a counter client with an ID `pub-1`.
+`./publisher localhost 1883 3` creates three counter publishers with IDs
+`pub-1`, `pub-2` and `pub-3`.
 
-The analyser can be run with `./analyser`.
+The analyser can be run with `./analyser <Broker hostname> <Port>`.
 
-Last updated: 2024-05-05
+Last updated: 2024-05-06
