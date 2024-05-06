@@ -31,7 +31,7 @@ double delays[1000000];           // Delay time length
 struct timeval timestamp;         // Time of last incoming message
 
 /**
- * The mian function executes the analyser.
+ * The main function executes the analyser.
  * To execute the program, the command should include the hostname and the port
  * number of the MQTT broker as arguments.
  */
