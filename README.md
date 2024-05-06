@@ -37,6 +37,9 @@ For instance, if the broker is hosted locally on port 1883, the command
 `./publisher localhost 1883 3` creates three counter publishers with IDs
 `pub-1`, `pub-2` and `pub-3`.
 
+The bash script [activate_publisher.sh](activate_publisher.sh) contains a
+command to activate all five counter publishers.
+
 The analyser can be run with `./analyser <Broker hostname> <Port>`.
 
 Last updated: 2024-05-06
