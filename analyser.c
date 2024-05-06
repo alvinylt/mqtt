@@ -40,13 +40,6 @@ int main(int argc, char *argv[]) {
     MQTTClient *client = mqtt_connect(url);
 
     // Perform the analysis
-    fprintf(stdout, "Analysing with:\n"
-        "\tQoS from broker to analyser: %d\n"
-        "\tQoS from publisher to broker: %d\n"
-        "\tDelay time: %d\n"
-        "\tNumber of active publishers: %d\n", 2, 2, 0, 5);
-    analyse(client, 0, 0, 4, 5);
-
     int qos_levels[] = {0, 1, 2};
     int delay_length[] = {0, 1, 2, 4};
     int instance_counts[] = {1, 2, 3, 4, 5};
