@@ -197,7 +197,7 @@ static void listen_counter() {
             "Total number of messages: %ld\n"
             "Average incoming message rate: %d per second\n"
             "Percentage of out-of-order messages: %.2f%%\n"
-            "Median delay time length: %.2f ms\n\n",
+            "Median delay time length: %.3f ms\n\n",
         last_count, number_of_messages, (int)average_msg_rate,
         out_of_order_msg_rate / 100, avg_delay);
 }
@@ -231,9 +231,10 @@ static int msg_arrived(void *context, char *topic, int topic_len,
         timestamp = timestamp2;
     else {
         // Evalaute the time length since the last incoming message
-        long long delay =
-            (timestamp2.tv_sec - timestamp.tv_sec) * 1000 +
-                    (timestamp2.tv_usec - timestamp.tv_usec) / 1000;
+        long long delay_int =
+            (timestamp2.tv_sec - timestamp.tv_sec) * 1e6 +
+                    (timestamp2.tv_usec - timestamp.tv_usec);
+        double delay = delay_int / 1e3;
         if (delay != 0) timestamp = timestamp2;
         // Update the statistics recorded in the global variables
         int this_count = atoi((char *)message->payload);
