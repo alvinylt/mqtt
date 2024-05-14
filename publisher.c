@@ -10,7 +10,7 @@
 #define TIMEOUT 1048576
 
 // Publish messages for 60 seconds
-#define TIME_LIMIT 60
+#define TIME_LIMIT 5
 
 // String buffer sizes
 #define BUFFER_SIZE 128
@@ -233,7 +233,10 @@ static void publish_counter(MQTTClient *client, const short int instance) {
             break;
 
         // Delay the next message publishing for the specified time frame
-        sleep(*delay/1000);
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = *delay * 1000000;
+        nanosleep(&ts, NULL);
     }
 }
 
