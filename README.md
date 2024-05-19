@@ -41,4 +41,4 @@ command to activate all five counter publishers.
 
 The analyser can be run with `./analyser <Broker hostname> <Port>`.
 
-Last updated: 2024-05-06
+Last updated: 2024-05-19
