@@ -1,7 +1,5 @@
 # MQTT Publisher and Analyser
 
-**Alvin Tang (u7447218)**
-
 This is an MQTT client implementation written in the C programming language.
 There are two programs, a publisher and an analyser.
 
@@ -40,5 +38,7 @@ The bash script [activate_publisher.sh](activate_publisher.sh) contains a
 command to activate all five counter publishers.
 
 The analyser can be run with `./analyser <Broker hostname> <Port>`.
+
+Author: Alvin Tang <dev@alvinylt.net>
 
 Last updated: 2024-05-19
